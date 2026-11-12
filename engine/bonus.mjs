@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import { bonusPool } from './build.mjs';
+const daily = JSON.parse(fs.readFileSync(new URL('./out/puzzles.json', import.meta.url)));
+const used = new Set(daily.map((p) => p.word));
+const bonus = bonusPool(Number(process.argv[2] || 300), used);
+const esc = (s) => s.replace(/'/g, "''");
+const rows = bonus.map((p) => `('bonus','${p.word}','${esc(p.definition)}','${p.part_of_speech}','${p.tier}',${p.total},'${esc(JSON.stringify(p.answers))}'::jsonb,'${esc(JSON.stringify(p.full_anagrams))}'::jsonb,'${p.dictionary_version}')`);
+const chunks = [];
+for (let i = 0; i < rows.length; i += 50) chunks.push(`insert into public.puzzles (kind, word, definition, part_of_speech, tier, total, answers, full_anagrams, dictionary_version) values\n${rows.slice(i, i + 50).join(',\n')};`);
+fs.writeFileSync(new URL('./out/bonus.sql', import.meta.url), chunks.join('\n\n'));
+console.log('bonus puzzles', bonus.length, bonus.reduce((a, p) => ((a[p.tier] = (a[p.tier] || 0) + 1), a), {}));

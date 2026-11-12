@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#12163a"/>
+  <rect x="7" y="14" width="24" height="30" rx="7" fill="#ff6fa8" transform="rotate(-8 19 29)"/>
+  <rect x="33" y="18" width="24" height="30" rx="7" fill="#2ed3c6" transform="rotate(7 45 33)"/>
+  <text x="19" y="38" font-family="Arial, sans-serif" font-weight="700" font-size="20" text-anchor="middle" fill="#12163a" transform="rotate(-8 19 29)">A</text>
+  <text x="45" y="41" font-family="Arial, sans-serif" font-weight="700" font-size="20" text-anchor="middle" fill="#12163a" transform="rotate(7 45 33)">P</text>
+  <circle cx="11" cy="54" r="3" fill="#ffd23f"/><circle cx="53" cy="10" r="2.5" fill="#ffd23f"/><circle cx="32" cy="56" r="2" fill="#ff9248"/>
+</svg>
