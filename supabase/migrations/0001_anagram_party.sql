@@ -58,6 +58,7 @@ create table public.unlocks (
   created_at timestamptz not null default now(),
   primary key (user_id, puzzle_id)
 );
+create index unlocks_puzzle_idx on public.unlocks (puzzle_id);
 
 create table public.token_transactions (
   id bigserial primary key,
@@ -68,6 +69,7 @@ create table public.token_transactions (
   created_at timestamptz not null default now()
 );
 create index token_tx_user_idx on public.token_transactions (user_id, created_at desc);
+create index token_tx_puzzle_idx on public.token_transactions (puzzle_id);
 
 create table public.word_flags (
   id bigserial primary key,
@@ -78,6 +80,8 @@ create table public.word_flags (
   status text not null default 'open' check (status in ('open', 'accepted', 'rejected')),
   created_at timestamptz not null default now()
 );
+create index word_flags_user_idx on public.word_flags (user_id);
+create index word_flags_puzzle_idx on public.word_flags (puzzle_id);
 
 create table public.suggestions (
   id bigserial primary key,
@@ -86,6 +90,7 @@ create table public.suggestions (
   message text not null check (char_length(message) between 3 and 2000),
   created_at timestamptz not null default now()
 );
+create index suggestions_user_idx on public.suggestions (user_id);
 
 alter table public.puzzles enable row level security;
 alter table public.profiles enable row level security;
@@ -109,7 +114,7 @@ create trigger on_auth_user_created
 
 -- Points for one word.
 create or replace function public.word_points(len int, source_len int)
-returns int language sql immutable as $$
+returns int language sql immutable set search_path = public as $$
   select case
     when len <= 4 then 5
     when len = 5 then 10

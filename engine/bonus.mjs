@@ -8,4 +8,5 @@ const rows = bonus.map((p) => `('bonus','${p.word}','${esc(p.definition)}','${p.
 const chunks = [];
 for (let i = 0; i < rows.length; i += 50) chunks.push(`insert into public.puzzles (kind, word, definition, part_of_speech, tier, total, answers, full_anagrams, dictionary_version) values\n${rows.slice(i, i + 50).join(',\n')};`);
 fs.writeFileSync(new URL('./out/bonus.sql', import.meta.url), chunks.join('\n\n'));
+fs.writeFileSync(new URL('./out/bonus.json', import.meta.url), JSON.stringify(bonus));
 console.log('bonus puzzles', bonus.length, bonus.reduce((a, p) => ((a[p.tier] = (a[p.tier] || 0) + 1), a), {}));
