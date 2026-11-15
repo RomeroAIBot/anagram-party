@@ -1,0 +1,2 @@
+# /etc/cron.d/anagramparty : load new puzzles daily at 06:10 UTC
+10 6 * * * anagram /opt/anagramparty/deploy/load-puzzles.sh >> /var/log/anagramparty-cron.log 2>&1

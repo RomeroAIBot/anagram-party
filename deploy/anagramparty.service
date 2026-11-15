@@ -1,0 +1,23 @@
+[Unit]
+Description=Anagram Party (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+User=anagram
+Group=anagram
+WorkingDirectory=/opt/anagramparty
+Environment=NODE_ENV=production
+Environment=PORT=3010
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -p 3010 -H 127.0.0.1
+Restart=always
+RestartSec=5
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

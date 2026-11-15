@@ -52,3 +52,13 @@ Reads `engine/out/puzzles.json`. Guest play only. Never set `AP_DEMO` in product
 ## Sounds
 
 `lib/sound.ts` synthesizes the free Balloon Party pack with the Web Audio API: type (3 variations), remove, shuffle, correct (pitch climbs with word length), wrong, already found, full anagram, milestone, board cleared. Recorded packs can replace these behind the same `play()` calls.
+
+## Self-hosting on a Linux server (Linode)
+
+Runs as a systemd service on port 3010 behind nginx. Files in `deploy/`.
+
+- App: `/opt/anagramparty`, owned by the `anagram` user. Secrets in `/opt/anagramparty/.env.production.local` (mode 600).
+- Service: `deploy/anagramparty.service` → `/etc/systemd/system/anagramparty.service`
+- nginx: `deploy/nginx-anagramparty.conf` → `/etc/nginx/sites-available/anagramparty`, HTTPS via certbot.
+- Daily puzzle loader: `deploy/cron.anagramparty` → `/etc/cron.d/anagramparty`
+- Update the live site: `sudo /opt/anagramparty/deploy/deploy.sh`
