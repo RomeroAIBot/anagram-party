@@ -33,20 +33,68 @@ export default function AccountClient({ email, profile, unlocked, history, archi
   const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function sendLink(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-    const addr = String(new FormData(e.currentTarget).get('email') || '').trim();
-    if (!addr) return setError('Enter your email address.');
-    setBusy(true);
-    const site = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+  const [mode, setMode] = useState<'signin' | 'signup' | 'link'>('signup');
+
+  async function sendLink(addr: string) {
     const { error } = await supabaseBrowser().auth.signInWithOtp({
       email: addr,
-      options: { emailRedirectTo: `${window.location.origin || site}/auth/callback?next=/account` },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/account` },
     });
+    if (error) {
+      setError(/rate|limit|many/i.test(error.message) ? 'Too many sign-in emails were sent recently. Try again in an hour, or use a password instead.' : 'We could not send the link. Check the address and try again.');
+    } else setSentTo(addr);
+  }
+
+  async function submitAuth(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setOk(null);
+    const f = new FormData(e.currentTarget);
+    const addr = String(f.get('email') || '').trim();
+    const password = String(f.get('password') || '');
+    if (!addr) return setError('Enter your email address.');
+    setBusy(true);
+    const sb = supabaseBrowser();
+    try {
+      if (mode === 'link') {
+        await sendLink(addr);
+      } else if (mode === 'signup') {
+        if (password.length < 8) return setError('Use a password with at least 8 characters.');
+        const { data, error } = await sb.auth.signUp({
+          email: addr,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/account` },
+        });
+        if (error) {
+          setError(/registered|exists/i.test(error.message) ? 'That email already has an account. Choose Sign in instead.' : error.message);
+        } else if (data.session) {
+          router.refresh();
+        } else {
+          setSentTo(addr);
+        }
+      } else {
+        const { error } = await sb.auth.signInWithPassword({ email: addr, password });
+        if (error) setError('That email and password don\'t match. Try again, or get a sign-in link by email.');
+        else router.refresh();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changePassword(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setOk(null);
+    const form = e.currentTarget;
+    const password = String(new FormData(form).get('newpassword') || '');
+    if (password.length < 8) return setError('Use a password with at least 8 characters.');
+    setBusy(true);
+    const { error } = await supabaseBrowser().auth.updateUser({ password });
     setBusy(false);
-    if (error) setError('We could not send the link. Check the address and try again.');
-    else setSentTo(addr);
+    if (error) return setError('Could not save that password. Try again.');
+    form.reset();
+    setOk('Password saved. You can sign in with it next time.');
   }
 
   async function saveName(e: React.FormEvent<HTMLFormElement>) {
@@ -101,24 +149,57 @@ export default function AccountClient({ email, profile, unlocked, history, archi
   );
 
   if (!email) {
+    const labels = { signup: 'Create account', signin: 'Sign in', link: 'Email me a link' } as const;
     return (
       <>
-        <h1>Sign in</h1>
-        <p>Sign in to save your words, keep a streak, earn Party Tokens, and appear on the leaderboard. No password needed; we email you a sign-in link.</p>
+        <h1>{mode === 'signup' ? 'Create your account' : 'Sign in'}</h1>
+        <p>An account saves your words, keeps your streak, earns Party Tokens, and puts you on the leaderboard.</p>
         {status}
         {sentTo ? (
           <p className="notice notice-ok" role="status">
-            Check {sentTo} for your sign-in link. It works once and expires in an hour.
+            Check {sentTo} for an email from us. Open the link in it to finish signing in.
           </p>
         ) : (
-          <form className="form card" onSubmit={sendLink}>
+          <form className="form card" onSubmit={submitAuth}>
+            <fieldset className="mode-switch">
+              <legend>What do you want to do?</legend>
+              {(['signup', 'signin', 'link'] as const).map((m) => (
+                <label key={m} className="radio">
+                  <input type="radio" name="mode" value={m} checked={mode === m} onChange={() => { setMode(m); setError(null); }} />
+                  {m === 'signup' ? 'Create a new account' : m === 'signin' ? 'Sign in with my password' : 'Email me a sign-in link (no password)'}
+                </label>
+              ))}
+            </fieldset>
             <label>
               Email address
               <input type="email" name="email" autoComplete="email" required />
             </label>
+            {mode !== 'link' && (
+              <label>
+                Password
+                <input
+                  type="password"
+                  name="password"
+                  required
+                  minLength={mode === 'signup' ? 8 : undefined}
+                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                  aria-describedby={mode === 'signup' ? 'pw-help' : undefined}
+                />
+              </label>
+            )}
+            {mode === 'signup' && (
+              <p id="pw-help" className="muted">
+                At least 8 characters.
+              </p>
+            )}
             <button className="btn btn-primary" type="submit" disabled={busy}>
-              {busy ? 'Sending…' : 'Email me a sign-in link'}
+              {busy ? 'One moment…' : labels[mode]}
             </button>
+            {mode === 'signin' && (
+              <button type="button" className="linkish" onClick={() => setMode('link')}>
+                Forgot your password? Get a sign-in link by email.
+              </button>
+            )}
           </form>
         )}
         <p className="muted">You must be 13 or older to make an account.</p>
@@ -236,6 +317,19 @@ export default function AccountClient({ email, profile, unlocked, history, archi
           </table>
         </section>
       )}
+
+      <section className="card" aria-labelledby="pw-h">
+        <h2 id="pw-h">Password</h2>
+        <form className="form" onSubmit={changePassword}>
+          <label>
+            New password
+            <input type="password" name="newpassword" minLength={8} required autoComplete="new-password" />
+          </label>
+          <button className="btn" type="submit" disabled={busy}>
+            Save password
+          </button>
+        </form>
+      </section>
 
       <p className="muted">Signed in as {email}.</p>
       <button className="btn" type="button" onClick={signOut}>

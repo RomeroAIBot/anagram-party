@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { getLeaderboard, getPuzzleByDate, getRecap } from '@/lib/data';
+import RecapBoard from '@/components/RecapBoard';
+import { getLeaderboard, getPlay, getProfile, getPuzzleByDate, getRecap } from '@/lib/data';
+import { currentUser } from '@/lib/supabase/server';
 import { addDays, currentPuzzleDate, formatLongDate } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
@@ -21,9 +23,10 @@ export default async function RecapPage({ searchParams }: { searchParams: Promis
     );
   }
 
-  const [{ players, words, rarest }, board] = await Promise.all([getRecap(puzzle), getLeaderboard(puzzle.id, 3)]);
-  const byLength = new Map<number, typeof words>();
-  for (const w of words) byLength.set(w.word.length, [...(byLength.get(w.word.length) ?? []), w]);
+  const [{ players, words, rarest }, board, user] = await Promise.all([getRecap(puzzle), getLeaderboard(puzzle.id, 3), currentUser()]);
+  const profile = user ? await getProfile(user.id) : null;
+  const myPlay = user && profile?.username ? await getPlay(user.id, puzzle.id) : null;
+  const serverFound = profile?.username ? myPlay?.found ?? [] : null;
 
   return (
     <div className="page">
@@ -51,23 +54,7 @@ export default async function RecapPage({ searchParams }: { searchParams: Promis
         )}
       </div>
 
-      <div className="card">
-        <h2>Every answer</h2>
-        <p className="muted">Each word shows the share of players who found it.</p>
-        {[...byLength.entries()].sort((a, b) => a[0] - b[0]).map(([len, list]) => (
-          <section key={len} aria-labelledby={`r-${len}`}>
-            <h3 id={`r-${len}`}>{len} letters</h3>
-            <ul className="recap-words">
-              {list.map((w) => (
-                <li key={w.word}>
-                  <strong>{w.word.toUpperCase()}</strong>
-                  {w.full ? ' (full anagram)' : ''}, {w.pct}%
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
+      <RecapBoard puzzleId={puzzle.id} words={words} serverFound={serverFound} />
       <p>
         <Link href="/">Play today&apos;s puzzle</Link>
       </p>

@@ -4,14 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { PublicPuzzle } from '@/lib/data';
 import { loadSoundSettings, play, primeAudio, saveSoundSettings } from '@/lib/sound';
-import { wordPoints } from '@/lib/scoring';
+import { MAX_HINTS, wordPoints } from '@/lib/scoring';
 import { Confetti, type ConfettiHandle } from './Confetti';
 import { Countdown } from './Countdown';
 
 type Me = {
   signedIn: boolean;
   profile?: { username: string | null; tokens: number; current_streak: number } | null;
-  play?: { found: string[]; points: number; cleared: boolean } | null;
+  play?: { found: string[]; points: number; cleared: boolean; hints_used?: number } | null;
 };
 
 type Feedback = { kind: 'correct' | 'full' | 'wrong' | 'repeat' | 'info'; text: string } | null;
@@ -21,6 +21,10 @@ const TIER_LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard' } as const;
 function storageKey(id: number) {
   return `ap:found:${id}`;
 }
+function hintKey(id: number) {
+  return `ap:hints:${id}`;
+}
+const HINT_SECONDS = 5;
 
 export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
   const [tiles, setTiles] = useState<string[]>(puzzle.letters);
@@ -34,6 +38,11 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
   const [sound, setSound] = useState({ muted: false, effects: 0.8, celebrations: 0.8 });
   const [announce, setAnnounce] = useState('');
   const [copied, setCopied] = useState(false);
+  const [hintsUsed, setHintsUsed] = useState(0);
+  const [hintWords, setHintWords] = useState<string[] | null>(null);
+  const [hintBusy, setHintBusy] = useState(false);
+  const hintTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const minLen = puzzle.minLength;
 
   const inputRef = useRef<HTMLInputElement>(null);
   const boardRef = useRef<HTMLHeadingElement>(null);
@@ -85,9 +94,13 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
           } catch {}
         }
         setFound(serverFound);
+        setHintsUsed(data.play?.hints_used ?? 0);
         setPoints(data.play?.points ?? 0);
       } else {
         setFound(local);
+        try {
+          setHintsUsed(Number(localStorage.getItem(hintKey(puzzle.id)) || 0));
+        } catch {}
         setPoints(local.reduce((s, w) => s + wordPoints(w.length, puzzle.sourceLength), 0));
       }
     })();
@@ -191,11 +204,11 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
     primeAudio();
     const word = input.toLowerCase();
     if (busy || !word) return;
-    if (word.length < 4) {
+    if (word.length < minLen) {
       play('wrong');
       flash('shake');
-      setFeedback({ kind: 'wrong', text: 'Words need at least 4 letters.' });
-      say('Too short. Words need at least 4 letters.');
+      setFeedback({ kind: 'wrong', text: `Words need at least ${minLen} letters.` });
+      say(`Too short. Words need at least ${minLen} letters.`);
       return;
     }
     if (found.includes(word)) {
@@ -266,7 +279,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
     const messages: Record<string, string> = {
       wrong: `${word.toUpperCase()} is not in today's list.`,
       repeat: `Already found ${word.toUpperCase()}.`,
-      short: 'Words need at least 4 letters.',
+      short: `Words need at least ${minLen} letters.`,
       letters: "Those letters aren't all in the puzzle.",
       closed: 'This puzzle has closed. A new one is up.',
       slow_down: 'Slow down a little and try again.',
@@ -286,6 +299,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
       if (!e.altKey || e.ctrlKey || e.metaKey) return;
       const actions: Record<string, () => void> = {
         KeyS: shuffle,
+        KeyH: useHint,
         KeyL: () => say(`Letters: ${tiles.join(', ')}`),
         KeyR: () => say(remainingSummary()),
         KeyB: () => boardRef.current?.focus(),
@@ -305,6 +319,45 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
+
+  async function useHint() {
+    primeAudio();
+    if (hintBusy || hintsUsed >= MAX_HINTS || cleared) return;
+    setHintBusy(true);
+    const res = await fetch('/api/hint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ puzzleId: puzzle.id, found }),
+    }).catch(() => null);
+    setHintBusy(false);
+    const data = res ? await res.json().catch(() => null) : null;
+    if (!data || data.status !== 'ok') {
+      const msg: Record<string, string> = {
+        none_left: 'No hints left for this puzzle.',
+        all_found: 'You already found every word!',
+        closed: 'This puzzle has closed.',
+        slow_down: 'Wait a moment before the next hint.',
+      };
+      const text = msg[data?.status] ?? 'Hint unavailable right now. Try again.';
+      setFeedback({ kind: 'info', text });
+      say(text);
+      if (data?.status === 'none_left') setHintsUsed(MAX_HINTS);
+      return;
+    }
+    const used = data.guest ? hintsUsed + 1 : data.hints_used;
+    setHintsUsed(used);
+    if (data.guest) {
+      try {
+        localStorage.setItem(hintKey(puzzle.id), String(used));
+      } catch {}
+    }
+    const words: string[] = data.words.map((w: string) => w.toUpperCase());
+    setHintWords(words);
+    play('milestone');
+    say(`Hint: try ${words.join(' and ')}. ${MAX_HINTS - used} ${MAX_HINTS - used === 1 ? 'hint' : 'hints'} left.`);
+    clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => setHintWords(null), HINT_SECONDS * 1000);
+  }
 
   async function share() {
     const head = puzzle.kind === 'daily' ? `Anagram Party #${puzzle.number}` : 'Anagram Party Bonus Round';
@@ -330,6 +383,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
         <p className="eyebrow">
           {puzzle.live ? 'Daily Party' : puzzle.kind === 'bonus' ? 'Bonus Round, unranked' : 'Archive, unranked'}
           <span className={`badge badge-${puzzle.tier}`}>{TIER_LABEL[puzzle.tier]}</span>
+          {minLen === 3 && <span className="badge badge-three">3-letter words count</span>}
         </p>
         <h1 className="game-title">{title}</h1>
         {puzzle.live && (
@@ -405,7 +459,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
           </button>
         </div>
         <p id="entry-help" className="sr-only">
-          Type letters from the puzzle. Enter submits, Escape clears. Alt plus R reads how many words are left.
+          Type letters from the puzzle. Words need at least {minLen} letters. Enter submits, Escape clears. Alt plus R reads how many words are left. Alt plus H uses a hint.
         </p>
         <div className="entry-actions">
           <button type="button" className="btn" onClick={shuffle}>
@@ -414,10 +468,33 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
           <button type="button" className="btn" onClick={clearInput} disabled={!input}>
             Clear answer
           </button>
+          <button
+            type="button"
+            className="btn btn-hint"
+            onClick={useHint}
+            disabled={hintBusy || hintsUsed >= MAX_HINTS || cleared}
+            aria-describedby="hint-help"
+          >
+            Hint ({Math.max(0, MAX_HINTS - hintsUsed)} left)
+          </button>
           <button type="submit" className="btn btn-primary" disabled={busy || !input}>
             Submit word
           </button>
         </div>
+        <p id="hint-help" className="sr-only">
+          Shows two words you haven&apos;t found for {HINT_SECONDS} seconds.{puzzle.live ? ' Using a hint is marked next to your name on the leaderboard.' : ''}
+        </p>
+        {hintWords && (
+          <div className="hint-panel" aria-hidden="true">
+            <span className="hint-label">Try</span>
+            {hintWords.map((w) => (
+              <span key={w} className="hint-word">
+                {w}
+              </span>
+            ))}
+            <span className="hint-timer" />
+          </div>
+        )}
         <p className={`feedback ${feedback ? `fb-${feedback.kind}` : ''}`} aria-hidden="true">
           {feedback?.text ?? ' '}
         </p>
@@ -548,6 +625,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
           <li><kbd>Enter</kbd> submit word</li>
           <li><kbd>Escape</kbd> clear answer</li>
           <li><kbd>Alt</kbd> + <kbd>S</kbd> shuffle letters</li>
+          <li><kbd>Alt</kbd> + <kbd>H</kbd> use a hint</li>
           <li><kbd>Alt</kbd> + <kbd>L</kbd> read the letters</li>
           <li><kbd>Alt</kbd> + <kbd>R</kbd> read words left by length</li>
           <li><kbd>Alt</kbd> + <kbd>B</kbd> jump to your words</li>

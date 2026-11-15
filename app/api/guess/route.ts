@@ -16,7 +16,7 @@ export async function POST(req: Request) {
 
   const puzzle = await getPuzzleRow(puzzleId);
   if (!puzzle) return json({ status: 'no_puzzle' }, 404);
-  if (word.length < 4) return json({ status: 'short', word });
+  if (word.length < (puzzle.min_length ?? 4)) return json({ status: 'short', word, min: puzzle.min_length ?? 4 });
   if (!fitsLetters(word, puzzle.word)) return json({ status: 'letters', word });
 
   const today = currentPuzzleDate();

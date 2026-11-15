@@ -12,7 +12,7 @@ export default function HowToPlay() {
       <div className="card">
         <h2>The rules</h2>
         <ul>
-          <li>Answers need at least 4 letters.</li>
+          <li>Answers usually need at least 4 letters. On random days, 3-letter words count too; the puzzle shows a &ldquo;3-letter words count&rdquo; badge when they do.</li>
           <li>Use each letter only as many times as it appears.</li>
           <li>No proper nouns, abbreviations, or hyphenated words.</li>
           <li>Wrong guesses cost nothing, and there&apos;s no guess limit.</li>
@@ -32,6 +32,7 @@ export default function HowToPlay() {
             </tr>
           </thead>
           <tbody>
+            <tr><th scope="row">3 letters (3-letter days)</th><td className="num">2</td></tr>
             <tr><th scope="row">4 letters</th><td className="num">5</td></tr>
             <tr><th scope="row">5 letters</th><td className="num">10</td></tr>
             <tr><th scope="row">6 letters</th><td className="num">20</td></tr>
@@ -43,6 +44,11 @@ export default function HowToPlay() {
           </tbody>
         </table>
         <p>The leaderboard ranks by words found. Points show how big your vocabulary is.</p>
+      </div>
+
+      <div className="card">
+        <h2>Hints</h2>
+        <p>Stuck? Press Hint and two words you haven&apos;t found show for 5 seconds. You get 3 hints per puzzle. Using one on the daily puzzle puts a &ldquo;used hints&rdquo; note next to your name on the leaderboard.</p>
       </div>
 
       <div className="card">
@@ -58,6 +64,7 @@ export default function HowToPlay() {
         <ul>
           <li><kbd>Escape</kbd> clears your answer.</li>
           <li><kbd>Alt</kbd> + <kbd>S</kbd> shuffles the letters.</li>
+          <li><kbd>Alt</kbd> + <kbd>H</kbd> uses a hint. Screen readers hear the two words once.</li>
           <li><kbd>Alt</kbd> + <kbd>L</kbd> reads the letters.</li>
           <li><kbd>Alt</kbd> + <kbd>R</kbd> reads how many words are left at each length.</li>
           <li><kbd>Alt</kbd> + <kbd>B</kbd> jumps to your found words, grouped by length.</li>

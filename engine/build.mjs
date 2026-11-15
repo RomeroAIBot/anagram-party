@@ -40,7 +40,8 @@ for (const t of TIERS) {
     const list = JSON.parse(fs.readFileSync(path.join(WL, `${prefix}-words-${t}.json`), 'utf8'));
     for (const w of list) {
       if (!/^[a-z]+$/.test(w)) continue; // drops proper nouns, apostrophes, hyphens
-      if (w.length < MIN_ANSWER) continue;
+      if (w.length < 3) continue;
+      if (w.length === 3 && t > 35) continue; // 3-letter answers only from the common tiers
       if (BLOCK.has(w)) continue;
       if (!tierOf.has(w)) tierOf.set(w, t);
     }
@@ -55,11 +56,11 @@ function counts(word) {
 }
 const dictEntries = [...tierOf.entries()].map(([w, t]) => ({ w, t, c: counts(w) }));
 
-export function findAnswers(source) {
+export function findAnswers(source, minLen = MIN_ANSWER) {
   const sc = counts(source);
   const out = [];
   outer: for (const e of dictEntries) {
-    if (e.w.length > source.length) continue;
+    if (e.w.length > source.length || e.w.length < minLen) continue;
     for (let i = 0; i < 26; i++) if (e.c[i] > sc[i]) continue outer;
     out.push(e);
   }
@@ -121,16 +122,22 @@ export function rate(source) {
   if (total >= 15 && total <= 30 && commonShare >= 0.8 && full.length >= 1) tier = 'easy';
   else if (total >= 31 && total <= 60 && commonShare >= 0.65) tier = 'medium';
   else if (total >= 61 && total <= 100) tier = 'hard';
+  const sortW = (list) => list.map((a) => a.w).sort((x, y) => x.length - y.length || x.localeCompare(y));
+  const with3 = findAnswers(source, 3);
+  const cap3 = { easy: 45, medium: 85, hard: 130 }[tier] ?? 0;
   return {
     tier,
     total,
-    answers: answers.map((a) => a.w).sort((x, y) => x.length - y.length || x.localeCompare(y)),
+    answers: sortW(answers),
     fullAnagrams: full.map((a) => a.w),
+    total3: with3.length,
+    answers3: sortW(with3),
+    ok3: !!tier && with3.length <= cap3,
   };
 }
 
 // ---------- Candidate source words ----------
-function candidates() {
+export function candidates() {
   const pool = [];
   for (const [w, t] of tierOf) {
     if (t > 35) continue;
@@ -147,7 +154,7 @@ function candidates() {
 }
 
 // Deterministic shuffle so the schedule is reproducible.
-function mulberry32(a) {
+export function mulberry32(a) {
   return function () {
     a |= 0; a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
@@ -155,7 +162,7 @@ function mulberry32(a) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-function shuffle(arr, rnd) {
+export function shuffle(arr, rnd) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(rnd() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];

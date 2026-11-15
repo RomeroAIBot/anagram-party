@@ -1,9 +1,11 @@
 // Mirrors public.word_points in the database. Used for display only;
 // the server function is the source of truth.
 export function wordPoints(len: number, sourceLen: number): number {
-  const base = len <= 4 ? 5 : len === 5 ? 10 : len === 6 ? 20 : len === 7 ? 35 : 50 + (len - 8) * 20;
+  const base = len <= 3 ? 2 : len === 4 ? 5 : len === 5 ? 10 : len === 6 ? 20 : len === 7 ? 35 : 50 + (len - 8) * 20;
   return base + (len === sourceLen ? 50 : 0);
 }
+
+export const MAX_HINTS = 3;
 
 export const COSTS = {
   archive: 50,

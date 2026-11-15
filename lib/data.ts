@@ -17,6 +17,7 @@ type PuzzleRow = {
   total: number;
   answers: string[];
   full_anagrams: string[];
+  min_length: number;
 };
 
 /** What the browser is allowed to see. Never includes the source word or answers. */
@@ -33,6 +34,7 @@ export type PublicPuzzle = {
   sourceLength: number;
   lengths: Record<number, number>;
   fullCount: number;
+  minLength: number;
   live: boolean;
 };
 
@@ -40,6 +42,7 @@ export type PlayState = {
   found: string[];
   points: number;
   cleared: boolean;
+  hints_used: number;
 };
 
 export type Profile = {
@@ -65,6 +68,7 @@ function toPublic(p: PuzzleRow, today: string): PublicPuzzle {
     sourceLength: p.word.length,
     lengths: lengthHistogram(p.answers),
     fullCount: p.full_anagrams.length,
+    minLength: p.min_length ?? 4,
     live: p.kind === 'daily' && p.puzzle_date === today,
   };
 }
@@ -74,7 +78,7 @@ async function demoRows(): Promise<PuzzleRow[]> {
   const fs = await import('node:fs');
   const path = await import('node:path');
   const list = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'engine/out/puzzles.json'), 'utf8'));
-  return list.map((p: any, i: number) => ({ ...p, id: i + 1, kind: 'daily' }));
+  return list.map((p: any, i: number) => ({ min_length: 4, ...p, id: i + 1, kind: 'daily' }));
 }
 const DEMO = process.env.AP_DEMO === '1';
 
@@ -116,7 +120,7 @@ export async function getProfile(userId: string): Promise<Profile | null> {
 export async function getPlay(userId: string, puzzleId: number): Promise<PlayState | null> {
   const { data } = await supabaseAdmin()
     .from('plays')
-    .select('found, points, cleared')
+    .select('found, points, cleared, hints_used')
     .eq('user_id', userId)
     .eq('puzzle_id', puzzleId)
     .maybeSingle();

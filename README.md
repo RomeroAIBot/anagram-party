@@ -35,8 +35,9 @@ node bonus.mjs 300              # bonus round pool
 
 - Accepted answers: SCOWL size 50 and below (English + American), lowercase only, 4+ letters, blocklist removed. About 60,000 words.
 - Definitions: WordNet 3.1.
-- Tiers come from the answer count and how common the answers are: Easy 15 to 30, Medium 31 to 60, Hard 61 to 100. Weekly rhythm: Easy Mon and Tue, Medium Wed to Fri, Hard Sat, wildcard Sun.
-- The schedule is deterministic. To extend it, generate from the day after the last puzzle and load with `on conflict do nothing`.
+- Tiers come from the answer count and how common the answers are: Easy 15 to 30, Medium 31 to 60, Hard 61 to 100.
+- `node reschedule.mjs YYYY-MM-DD 400` rebuilds the schedule from that date, keeping earlier days: a random tier each day (never the same 4 days running) and random 3-letter days, about 1 in 4, never 3 in a row. On 3-letter days, common 3-letter words count and score 2 points.
+- The daily loader job only adds dates that don't exist yet. To replace future days, delete them first (`delete from puzzles where kind='daily' and puzzle_date > current date`) and run the loader.
 - Dictionary changes apply to future puzzles only.
 
 ## Local demo without a database

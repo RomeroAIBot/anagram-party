@@ -31,6 +31,7 @@ export async function GET(req: Request) {
     definition: p.definition,
     part_of_speech: p.part_of_speech,
     tier: p.tier,
+    min_length: p.min_length ?? 4,
     total: p.total,
     answers: p.answers,
     full_anagrams: p.full_anagrams,
