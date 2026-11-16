@@ -23,7 +23,7 @@ Daily anagram word game at anagramparty.com. Next.js on Vercel, Supabase for acc
 1. Run `supabase/migrations/0001_anagram_party.sql`.
 2. Load puzzles: `engine/out/puzzles.sql` (daily schedule) and `engine/out/bonus.sql` (token bonus rounds).
 3. Authentication > URL Configuration: set Site URL to `https://anagramparty.com` and add `https://anagramparty.com/auth/callback` (plus the Vercel preview URL) to Redirect URLs.
-4. Authentication > Emails: before launch, set up custom SMTP so sign-in emails come from hello@anagramparty.com and aren't rate limited.
+4. Authentication > Emails: custom SMTP sends sign-in emails from play@blindradioguy.com through smtp.dreamhost.com (port 465). DreamHost allows 100 recipients an hour per mailbox; Supabase is set to 30 auth emails an hour.
 
 ## Word engine (`engine/`)
 
