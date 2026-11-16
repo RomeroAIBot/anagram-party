@@ -67,6 +67,9 @@ export default function AccountClient({ email, profile, unlocked, history, archi
         });
         if (error) {
           setError(/registered|exists/i.test(error.message) ? 'That email already has an account. Choose Sign in instead.' : error.message);
+        } else if (data.user && data.user.identities?.length === 0) {
+          // Supabase answers a repeat sign-up with a fake success and sends no email.
+          setError("That email already has an account. Choose Sign in with my password, or Email me a sign-in link if you don't know the password. Once you're in, you can set a new password on this page.");
         } else if (data.session) {
           router.refresh();
         } else {
