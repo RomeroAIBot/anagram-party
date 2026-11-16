@@ -57,8 +57,12 @@ Reads `engine/out/puzzles.json`. Guest play only. Never set `AP_DEMO` in product
 
 Runs as a systemd service on port 3010 behind nginx. Files in `deploy/`.
 
-- App: `/opt/anagramparty`, owned by the `anagram` user. Secrets in `/opt/anagramparty/.env.production.local` (mode 600).
-- Service: `deploy/anagramparty.service` → `/etc/systemd/system/anagramparty.service`
-- nginx: `deploy/nginx-anagramparty.conf` → `/etc/nginx/sites-available/anagramparty`, HTTPS via certbot.
+- Source checkout: `/opt/anagramparty` (owned by `anagram`). Secrets in `/opt/anagramparty/.env.production.local` (mode 600); set the Supabase key with `bash /opt/anagramparty/deploy/set-secret.sh`.
+- Each deploy builds into `/opt/anagramparty-releases/<commit>`; `/opt/anagramparty-live` points at the running one. A failed build never replaces the live site, and a release that doesn't answer is rolled back.
+- **Automatic updates:** `anagramparty-autodeploy.timer` checks GitHub every 2 minutes and deploys new commits on `main`. Log: `journalctl -u anagramparty-autodeploy -n 50`.
+- Deploy right now by hand: `sudo /opt/anagramparty/deploy/deploy.sh`
+- nginx: `deploy/nginx-anagramparty.conf`, HTTPS via certbot (auto-renews).
 - Daily puzzle loader: `deploy/cron.anagramparty` → `/etc/cron.d/anagramparty`
-- Update the live site: `sudo /opt/anagramparty/deploy/deploy.sh`
+- One-time switch to auto-deploy on an existing server: `sudo bash /opt/anagramparty/deploy/install-autodeploy.sh`
+
+Pushing to `main` on GitHub updates both the Linode site and the Vercel copy.

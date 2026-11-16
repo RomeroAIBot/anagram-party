@@ -1,0 +1,8 @@
+[Unit]
+Description=Anagram Party: deploy new commits from GitHub
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/anagramparty/deploy/auto-deploy.sh
+TimeoutStartSec=1200

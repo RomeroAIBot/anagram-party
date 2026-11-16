@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=anagram
 Group=anagram
-WorkingDirectory=/opt/anagramparty
+WorkingDirectory=/opt/anagramparty-live
 Environment=NODE_ENV=production
 Environment=PORT=3010
 Environment=HOSTNAME=127.0.0.1
