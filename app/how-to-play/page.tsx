@@ -48,7 +48,7 @@ export default function HowToPlay() {
 
       <div className="card">
         <h2>Hints</h2>
-        <p>Stuck? Press Hint and two words you haven&apos;t found show for 5 seconds. You get 3 hints per puzzle. Using one on the daily puzzle puts a &ldquo;used hints&rdquo; note next to your name on the leaderboard.</p>
+        <p>Stuck? Press Hint and 3 answers show for 5 seconds. At least one is a word you haven&apos;t found yet, but the others might be words you already have, so stay sharp. There&apos;s no limit on hints. While a hint is showing, and for 5 seconds after it closes, the Hint button waits before it gives you another set. You can show hints for anywhere from 1 to 7 seconds under Settings on the puzzle page. Using a hint on the daily puzzle puts a &ldquo;used hints&rdquo; note next to your name on the leaderboard.</p>
       </div>
 
       <div className="card">
@@ -64,7 +64,7 @@ export default function HowToPlay() {
         <ul>
           <li><kbd>Escape</kbd> clears your answer.</li>
           <li><kbd>Alt</kbd> + <kbd>S</kbd> shuffles the letters.</li>
-          <li><kbd>Alt</kbd> + <kbd>H</kbd> uses a hint. Screen readers hear the two words once.</li>
+          <li><kbd>Alt</kbd> + <kbd>H</kbd> uses a hint. Screen readers hear the three words once.</li>
           <li><kbd>Alt</kbd> + <kbd>L</kbd> reads the letters.</li>
           <li><kbd>Alt</kbd> + <kbd>R</kbd> reads how many words are left at each length.</li>
           <li><kbd>Alt</kbd> + <kbd>B</kbd> jumps to your found words, grouped by length.</li>

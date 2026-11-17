@@ -5,7 +5,6 @@ export function wordPoints(len: number, sourceLen: number): number {
   return base + (len === sourceLen ? 50 : 0);
 }
 
-export const MAX_HINTS = 3;
 
 export const COSTS = {
   archive: 50,

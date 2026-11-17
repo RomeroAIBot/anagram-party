@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { PublicPuzzle } from '@/lib/data';
 import { loadSoundSettings, play, primeAudio, saveSoundSettings } from '@/lib/sound';
-import { MAX_HINTS, wordPoints } from '@/lib/scoring';
+import { wordPoints } from '@/lib/scoring';
 import { Confetti, type ConfettiHandle } from './Confetti';
 import { Countdown } from './Countdown';
 
@@ -24,7 +24,10 @@ function storageKey(id: number) {
 function hintKey(id: number) {
   return `ap:hints:${id}`;
 }
-const HINT_SECONDS = 5;
+const HINT_SECONDS_KEY = 'ap:hintSeconds';
+const DEFAULT_HINT_SECONDS = 5;
+const HINT_COOLDOWN = 5; // seconds to wait after the hint window closes
+const HINT_CHOICES = [1, 2, 3, 4, 5, 6, 7];
 
 export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
   const [tiles, setTiles] = useState<string[]>(puzzle.letters);
@@ -42,6 +45,10 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
   const [hintWords, setHintWords] = useState<string[] | null>(null);
   const [hintBusy, setHintBusy] = useState(false);
   const hintTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [hintSeconds, setHintSeconds] = useState(DEFAULT_HINT_SECONDS);
+  const [hintWait, setHintWait] = useState(0); // seconds left before the next hint
+  const hintReadyAt = useRef(0);
+  const hintLocked = !!hintWords || hintWait > 0;
   const minLen = puzzle.minLength;
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -62,7 +69,33 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
 
   useEffect(() => {
     setSound(loadSoundSettings());
+    try {
+      const saved = Number(localStorage.getItem(HINT_SECONDS_KEY));
+      if (HINT_CHOICES.includes(saved)) setHintSeconds(saved);
+    } catch {}
   }, []);
+
+  // Count down the wait after a hint window closes.
+  useEffect(() => {
+    if (hintWords || hintReadyAt.current <= Date.now()) return;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((hintReadyAt.current - Date.now()) / 1000));
+      setHintWait(left);
+      return left;
+    };
+    tick();
+    const id = setInterval(() => {
+      if (tick() === 0) clearInterval(id);
+    }, 250);
+    return () => clearInterval(id);
+  }, [hintWords]);
+
+  function changeHintSeconds(n: number) {
+    setHintSeconds(n);
+    try {
+      localStorage.setItem(HINT_SECONDS_KEY, String(n));
+    } catch {}
+  }
 
   // Load saved progress: account first, then any guest words to merge in.
   useEffect(() => {
@@ -322,7 +355,18 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
 
   async function useHint() {
     primeAudio();
-    if (hintBusy || hintsUsed >= MAX_HINTS || cleared) return;
+    if (cleared || hintBusy) return;
+    if (hintWords) {
+      say('The hint is still showing.');
+      return;
+    }
+    const wait = Math.ceil((hintReadyAt.current - Date.now()) / 1000);
+    if (wait > 0) {
+      const text = `Next hint in ${wait} ${wait === 1 ? 'second' : 'seconds'}.`;
+      setFeedback({ kind: 'info', text });
+      say(text);
+      return;
+    }
     setHintBusy(true);
     const res = await fetch('/api/hint', {
       method: 'POST',
@@ -333,15 +377,13 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
     const data = res ? await res.json().catch(() => null) : null;
     if (!data || data.status !== 'ok') {
       const msg: Record<string, string> = {
-        none_left: 'No hints left for this puzzle.',
         all_found: 'You already found every word!',
         closed: 'This puzzle has closed.',
-        slow_down: 'Wait a moment before the next hint.',
+        slow_down: 'Wait a few seconds before the next hint.',
       };
       const text = msg[data?.status] ?? 'Hint unavailable right now. Try again.';
       setFeedback({ kind: 'info', text });
       say(text);
-      if (data?.status === 'none_left') setHintsUsed(MAX_HINTS);
       return;
     }
     const used = data.guest ? hintsUsed + 1 : data.hints_used;
@@ -352,11 +394,14 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
       } catch {}
     }
     const words: string[] = data.words.map((w: string) => w.toUpperCase());
+    const secs = hintSeconds;
+    hintReadyAt.current = Date.now() + (secs + HINT_COOLDOWN) * 1000;
     setHintWords(words);
     play('milestone');
-    say(`Hint: try ${words.join(' and ')}. ${MAX_HINTS - used} ${MAX_HINTS - used === 1 ? 'hint' : 'hints'} left.`);
+    const list = words.length > 1 ? `${words.slice(0, -1).join(', ')}, and ${words[words.length - 1]}` : words[0];
+    say(`Hint: ${list}. Some of these you may already have.`);
     clearTimeout(hintTimer.current);
-    hintTimer.current = setTimeout(() => setHintWords(null), HINT_SECONDS * 1000);
+    hintTimer.current = setTimeout(() => setHintWords(null), secs * 1000);
   }
 
   async function share() {
@@ -472,17 +517,18 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
             type="button"
             className="btn btn-hint"
             onClick={useHint}
-            disabled={hintBusy || hintsUsed >= MAX_HINTS || cleared}
+            disabled={cleared}
+            aria-disabled={hintLocked || hintBusy || undefined}
             aria-describedby="hint-help"
           >
-            Hint ({Math.max(0, MAX_HINTS - hintsUsed)} left)
+            {hintWords ? 'Hint showing' : hintWait > 0 ? `Hint in ${hintWait}` : 'Hint'}
           </button>
           <button type="submit" className="btn btn-primary" disabled={busy || !input}>
             Submit word
           </button>
         </div>
         <p id="hint-help" className="sr-only">
-          Shows two words you haven&apos;t found for {HINT_SECONDS} seconds.{puzzle.live ? ' Using a hint is marked next to your name on the leaderboard.' : ''}
+          Shows 3 answers for {hintSeconds} {hintSeconds === 1 ? 'second' : 'seconds'}. Some may be words you already found. After it closes, wait {HINT_COOLDOWN} seconds for the next one. Change the time under Settings.{puzzle.live ? ' Using a hint is marked next to your name on the leaderboard.' : ''}
         </p>
         {hintWords && (
           <div className="hint-panel" aria-hidden="true">
@@ -492,7 +538,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
                 {w}
               </span>
             ))}
-            <span className="hint-timer" />
+            <span className="hint-timer" style={{ animationDuration: `${hintSeconds}s` }} />
           </div>
         )}
         <p className={`feedback ${feedback ? `fb-${feedback.kind}` : ''}`} aria-hidden="true">
@@ -595,8 +641,18 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
       </section>
 
       <details className="sound-panel">
-        <summary>Sound settings</summary>
+        <summary>Settings</summary>
         <div className="sound-controls">
+          <label>
+            Show hints for
+            <select value={hintSeconds} onChange={(e) => changeHintSeconds(Number(e.target.value))}>
+              {HINT_CHOICES.map((n) => (
+                <option key={n} value={n}>
+                  {n} {n === 1 ? 'second' : 'seconds'}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="check">
             <input
               type="checkbox"

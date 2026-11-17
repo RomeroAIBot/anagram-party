@@ -31,6 +31,7 @@ export default function AccountClient({ email, profile, unlocked, history, archi
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [pwStatus, setPwStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [mode, setMode] = useState<'signin' | 'signup' | 'link'>('signup');
@@ -89,15 +90,19 @@ export default function AccountClient({ email, profile, unlocked, history, archi
     e.preventDefault();
     setError(null);
     setOk(null);
+    setPwStatus(null);
     const form = e.currentTarget;
     const password = String(new FormData(form).get('newpassword') || '');
-    if (password.length < 8) return setError('Use a password with at least 8 characters.');
+    if (password.length < 8) return setPwStatus({ ok: false, text: 'Use a password with at least 8 characters.' });
     setBusy(true);
     const { error } = await supabaseBrowser().auth.updateUser({ password });
     setBusy(false);
-    if (error) return setError('Could not save that password. Try again.');
+    if (error) {
+      const same = /different|same/i.test(error.message);
+      return setPwStatus({ ok: false, text: same ? 'That is already your password. Choose a different one.' : 'Could not update your password. Try again.' });
+    }
     form.reset();
-    setOk('Password saved. You can sign in with it next time.');
+    setPwStatus({ ok: true, text: 'Your password has been updated. Use it next time you sign in.' });
   }
 
   async function saveName(e: React.FormEvent<HTMLFormElement>) {
@@ -332,6 +337,9 @@ export default function AccountClient({ email, profile, unlocked, history, archi
             Save password
           </button>
         </form>
+        <div role="status" aria-live="polite">
+          {pwStatus && <p className={`notice ${pwStatus.ok ? 'notice-ok' : 'notice-err'}`}>{pwStatus.text}</p>}
+        </div>
       </section>
 
       <p className="muted">Signed in as {email}.</p>
