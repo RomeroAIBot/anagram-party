@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { PublicPuzzle } from '@/lib/data';
 import { loadSoundSettings, play, primeAudio, saveSoundSettings } from '@/lib/sound';
 import { wordPoints } from '@/lib/scoring';
@@ -29,7 +30,12 @@ const DEFAULT_HINT_SECONDS = 5;
 const HINT_COOLDOWN = 5; // seconds to wait after the hint window closes
 const HINT_CHOICES = [1, 2, 3, 4, 5, 6, 7];
 
-export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
+type RoomProps = { initialFound: string[]; clearedTotal: number; previous: { word: string; definition: string } | null };
+
+export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: RoomProps }) {
+  const isRoom = !!room;
+  const router = useRouter();
+  const [newBusy, setNewBusy] = useState(false);
   const [tiles, setTiles] = useState<string[]>(puzzle.letters);
   const [input, setInput] = useState('');
   const [found, setFound] = useState<string[]>([]);
@@ -99,6 +105,21 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
 
   // Load saved progress: account first, then any guest words to merge in.
   useEffect(() => {
+    if (room) {
+      setFound(room.initialFound);
+      setPoints(room.initialFound.reduce((s, w) => s + wordPoints(w.length, puzzle.sourceLength), 0));
+      let fresh = false;
+      try {
+        fresh = sessionStorage.getItem('ap:room:new') === '1';
+        sessionStorage.removeItem('ap:room:new');
+      } catch {}
+      if (fresh) {
+        inputRef.current?.focus();
+        const prev = room.previous ? ` The last word was ${room.previous.word.toUpperCase()}.` : '';
+        say(`New puzzle, ${puzzle.letters.length} letters: ${puzzle.letters.join(', ')}. ${puzzle.total} words to find.${prev}`);
+      }
+      return;
+    }
     let cancelled = false;
     const local: string[] = (() => {
       try {
@@ -255,7 +276,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
     }
 
     setBusy(true);
-    const res = await fetch('/api/guess', {
+    const res = await fetch(isRoom ? '/api/room/guess' : '/api/guess', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ puzzleId: puzzle.id, word }),
@@ -310,7 +331,8 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
     }
 
     const messages: Record<string, string> = {
-      wrong: `${word.toUpperCase()} is not in today's list.`,
+      wrong: `${word.toUpperCase()} is not in ${isRoom ? "this puzzle's" : "today's"} list.`,
+      stale: 'This puzzle was replaced with a new one. Reloading.',
       repeat: `Already found ${word.toUpperCase()}.`,
       short: `Words need at least ${minLen} letters.`,
       letters: "Those letters aren't all in the puzzle.",
@@ -318,6 +340,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
       slow_down: 'Slow down a little and try again.',
     };
     const text = messages[data.status] ?? 'Something went wrong. Try again.';
+    if (data.status === 'stale') router.refresh();
     if (data.status === 'repeat') play('repeat');
     else play('wrong');
     flash('shake');
@@ -333,6 +356,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
       const actions: Record<string, () => void> = {
         KeyS: shuffle,
         KeyH: useHint,
+        ...(isRoom ? { KeyN: newPuzzle } : {}),
         KeyL: () => say(`Letters: ${tiles.join(', ')}`),
         KeyR: () => say(remainingSummary()),
         KeyB: () => boardRef.current?.focus(),
@@ -368,7 +392,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
       return;
     }
     setHintBusy(true);
-    const res = await fetch('/api/hint', {
+    const res = await fetch(isRoom ? '/api/room/hint' : '/api/hint', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ puzzleId: puzzle.id, found }),
@@ -388,7 +412,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
     }
     const used = data.guest ? hintsUsed + 1 : data.hints_used;
     setHintsUsed(used);
-    if (data.guest) {
+    if (data.guest && !isRoom) {
       try {
         localStorage.setItem(hintKey(puzzle.id), String(used));
       } catch {}
@@ -402,6 +426,26 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
     say(`Hint: ${list}. Some of these you may already have.`);
     clearTimeout(hintTimer.current);
     hintTimer.current = setTimeout(() => setHintWords(null), secs * 1000);
+  }
+
+  async function newPuzzle() {
+    primeAudio();
+    if (newBusy) return;
+    setNewBusy(true);
+    say('Getting a new puzzle.');
+    const res = await fetch('/api/room/new', { method: 'POST' }).catch(() => null);
+    if (!res?.ok) {
+      setNewBusy(false);
+      const text = res?.status === 429 ? 'Slow down a little, then try again.' : 'Could not get a new puzzle. Try again.';
+      setFeedback({ kind: 'info', text });
+      say(text);
+      return;
+    }
+    try {
+      sessionStorage.setItem('ap:room:new', '1');
+    } catch {}
+    play('shuffle');
+    router.refresh();
   }
 
   async function share() {
@@ -418,7 +462,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
   }
 
   const pct = Math.round((found.length / puzzle.total) * 100);
-  const title = puzzle.kind === 'daily' ? `Puzzle #${puzzle.number}` : 'Bonus Round';
+  const title = isRoom ? 'Puzzle Room' : puzzle.kind === 'daily' ? `Puzzle #${puzzle.number}` : 'Bonus Round';
 
   return (
     <div className="game">
@@ -426,7 +470,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
 
       <div className="game-meta">
         <p className="eyebrow">
-          {puzzle.live ? 'Daily Party' : puzzle.kind === 'bonus' ? 'Bonus Round, unranked' : 'Archive, unranked'}
+          {isRoom ? 'Just for fun, unranked' : puzzle.live ? 'Daily Party' : puzzle.kind === 'bonus' ? 'Bonus Round, unranked' : 'Archive, unranked'}
           <span className={`badge badge-${puzzle.tier}`}>{TIER_LABEL[puzzle.tier]}</span>
           {minLen === 3 && <span className="badge badge-three">3-letter words count</span>}
         </p>
@@ -436,11 +480,27 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
             <Countdown />
           </p>
         )}
+        {isRoom && (
+          <div className="room-bar">
+            <button type="button" className="btn" onClick={newPuzzle} disabled={newBusy} aria-describedby="new-help">
+              {newBusy ? 'Getting a new puzzle…' : 'Give me a new puzzle'}
+            </button>
+            <p id="new-help" className="muted">
+              Starts a different puzzle from the beginning. Words found on this one are cleared. Alt plus N works too.
+              {room!.clearedTotal > 0 && ` Puzzles you've cleared in the room: ${room!.clearedTotal}.`}
+            </p>
+            {room!.previous && (
+              <p className="muted">
+                Last puzzle&apos;s word: <strong>{room!.previous.word.toUpperCase()}</strong>. {room!.previous.definition}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <section aria-labelledby="letters-h" className="letters-wrap">
         <h2 id="letters-h" className="sr-only">
-          Today&apos;s letters
+          {isRoom ? 'The letters' : <>Today&apos;s letters</>}
         </h2>
         <ul className={`tiles ${anim === 'shake' ? 'shake' : ''}`} aria-label={`${tiles.length} letters`}>
           {tiles.map((t, i) => {
@@ -600,6 +660,11 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
             Party Complete!
           </h2>
           <p>You found all {puzzle.total} words.</p>
+          {isRoom && (
+            <button type="button" className="btn btn-primary" onClick={newPuzzle} disabled={newBusy}>
+              Get a new puzzle
+            </button>
+          )}
         </section>
       )}
 
@@ -608,9 +673,11 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
           <h2 id="board-h" ref={boardRef} tabIndex={-1}>
             Your words
           </h2>
-          <button type="button" className="btn btn-small" onClick={share} disabled={!found.length}>
-            {copied ? 'Copied!' : 'Share result'}
-          </button>
+          {!isRoom && (
+            <button type="button" className="btn btn-small" onClick={share} disabled={!found.length}>
+              {copied ? 'Copied!' : 'Share result'}
+            </button>
+          )}
         </div>
         <div className="groups">
           {lengths.map((len) => {
@@ -687,6 +754,7 @@ export default function Game({ puzzle }: { puzzle: PublicPuzzle }) {
           <li><kbd>Alt</kbd> + <kbd>B</kbd> jump to your words</li>
           <li><kbd>Alt</kbd> + <kbd>W</kbd> jump to the answer field</li>
           <li><kbd>Alt</kbd> + <kbd>M</kbd> mute or unmute</li>
+          {isRoom && <li><kbd>Alt</kbd> + <kbd>N</kbd> new puzzle</li>}
         </ul>
         <p className="muted">On a Mac, use Option instead of Alt.</p>
       </details>

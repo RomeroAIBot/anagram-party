@@ -23,7 +23,7 @@ type PuzzleRow = {
 /** What the browser is allowed to see. Never includes the source word or answers. */
 export type PublicPuzzle = {
   id: number;
-  kind: 'daily' | 'bonus';
+  kind: 'daily' | 'bonus' | 'room';
   date: string | null;
   number: number | null;
   letters: string[];

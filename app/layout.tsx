@@ -53,6 +53,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/recap">Yesterday</Link>
               </li>
               <li>
+                <Link href="/room">Puzzle Room</Link>
+              </li>
+              <li>
                 <Link href="/account">Account</Link>
               </li>
             </ul>

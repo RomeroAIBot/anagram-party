@@ -333,3 +333,8 @@ table.board-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .rw-key { padding: 3px 10px; border-radius: 8px; font-weight: 700; }
 .rw-key.rw-found { background: rgba(46,211,198,0.16); border: 1px solid var(--teal); }
 .rw-key.rw-missed { background: rgba(255,122,107,0.14); border: 1px dashed var(--coral); }
+
+/* Puzzle Room */
+.room-bar { display: grid; gap: 6px; justify-items: center; margin-top: 10px; text-align: center; }
+.room-bar p { margin: 0; max-width: 46ch; }
+.party-complete .btn { margin-top: 10px; }

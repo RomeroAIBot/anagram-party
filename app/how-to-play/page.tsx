@@ -52,6 +52,13 @@ export default function HowToPlay() {
       </div>
 
       <div className="card">
+        <h2>Puzzle Room</h2>
+        <p>
+          Signed in? Head to the <Link href="/room">Puzzle Room</Link> for random puzzles just for fun. 3-letter words count, nothing goes on the leaderboard, and your words are saved so you can come back later. Clear the board and grab another, or press &ldquo;Give me a new puzzle&rdquo; any time to start fresh. A new puzzle starts from the beginning, so the words you found on the old one are cleared.
+        </p>
+      </div>
+
+      <div className="card">
         <h2>Party Tokens</h2>
         <p>
           Signed-in players earn tokens: 25 for finding 5 words in the daily puzzle, 15 for finding half, 50 for clearing the board, 10 per Full Anagram, 100 for every 7 days in a row, and 500 at 30 days. Spend them on bonus rounds and archive puzzles from your <Link href="/account">account page</Link>.
