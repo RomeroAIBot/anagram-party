@@ -33,8 +33,9 @@ PREV=$(readlink -f "$LIVE" 2>/dev/null || true)
 ln -sfn "$DIR" "$LIVE.new" && mv -Tf "$LIVE.new" "$LIVE"
 systemctl restart anagramparty
 
+echo "Waiting for the new release to start (this can take a few seconds)..."
 for i in $(seq 1 30); do
-  if curl -fsS -o /dev/null http://127.0.0.1:3010/; then
+  if curl -fs -o /dev/null http://127.0.0.1:3010/; then
     echo "Live on $SHA."
     # Keep the live release plus the two most recent others.
     ls -1dt "$RELEASES"/*/ 2>/dev/null | sed 's:/$::' | grep -vx "$DIR" | tail -n +3 | xargs -r rm -rf
