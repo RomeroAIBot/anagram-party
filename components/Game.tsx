@@ -39,6 +39,9 @@ export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: Ro
   const [tiles, setTiles] = useState<string[]>(puzzle.letters);
   const [input, setInput] = useState('');
   const [found, setFound] = useState<string[]>([]);
+  useEffect(() => {
+    foundRef.current = found;
+  }, [found]);
   const [points, setPoints] = useState(0);
   const [me, setMe] = useState<Me | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -58,6 +61,23 @@ export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: Ro
   const minLen = puzzle.minLength;
 
   const inputRef = useRef<HTMLInputElement>(null);
+  // Rapid fire: words go into a queue and are checked one after another, so the box clears
+  // right away and the player can keep typing while the server answers.
+  const foundRef = useRef<string[]>([]);
+  const queueRef = useRef<string[]>([]);
+  const drainingRef = useRef(false);
+  // Keep the cursor (and the phone keyboard) in the answer box when a game button is tapped.
+  const typingRef = useRef(false);
+  const holdFocus = (e: React.MouseEvent) => {
+    if (document.activeElement === inputRef.current) {
+      e.preventDefault();
+      typingRef.current = true;
+    }
+  };
+  const backToInput = () => {
+    if (typingRef.current) inputRef.current?.focus();
+    typingRef.current = false;
+  };
   const boardRef = useRef<HTMLHeadingElement>(null);
   const confetti = useRef<ConfettiHandle>(null);
   const announceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -254,10 +274,11 @@ export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: Ro
       .join('. ');
   }
 
-  async function submit() {
+  function submit() {
     primeAudio();
+    backToInput();
     const word = input.toLowerCase();
-    if (busy || !word) return;
+    if (!word) return;
     if (word.length < minLen) {
       play('wrong');
       flash('shake');
@@ -265,44 +286,56 @@ export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: Ro
       say(`Too short. Words need at least ${minLen} letters.`);
       return;
     }
-    if (found.includes(word)) {
+    setInput('');
+    if (foundRef.current.includes(word) || queueRef.current.includes(word)) {
       play('repeat');
       setFeedback({ kind: 'repeat', text: `Already found ${word.toUpperCase()}` });
       say(`${word.toUpperCase()}, already found.`);
       document.getElementById(`w-${word}`)?.classList.add('pulse');
       setTimeout(() => document.getElementById(`w-${word}`)?.classList.remove('pulse'), 900);
-      setInput('');
       return;
     }
+    queueRef.current.push(word);
+    void drainQueue();
+  }
 
+  async function drainQueue() {
+    if (drainingRef.current) return;
+    drainingRef.current = true;
     setBusy(true);
+    while (queueRef.current.length) await checkWord(queueRef.current[0]).finally(() => queueRef.current.shift());
+    drainingRef.current = false;
+    setBusy(false);
+  }
+
+  async function checkWord(word: string) {
     const res = await fetch(isRoom ? '/api/room/guess' : '/api/guess', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ puzzleId: puzzle.id, word }),
     }).catch(() => null);
-    setBusy(false);
     const data = res ? await res.json().catch(() => null) : null;
 
     if (!data) {
-      setFeedback({ kind: 'info', text: 'Connection problem. Try again.' });
-      say('Connection problem. Try again.');
+      setFeedback({ kind: 'info', text: `Connection problem. ${word.toUpperCase()} wasn't checked; try it again.` });
+      say(`Connection problem. ${word.toUpperCase()} wasn't checked; try it again.`);
       return;
     }
 
     if (data.status === 'correct') {
-      const nextFound = [...found, word];
+      const prev = foundRef.current;
+      const nextFound = [...prev, word];
+      foundRef.current = nextFound;
       const total = puzzle.total;
-      const before = found.length / total;
+      const before = prev.length / total;
       const after = nextFound.length / total;
       setFound(nextFound);
-      setPoints(typeof data.score === 'number' ? data.score : points + data.points);
+      setPoints((p) => (typeof data.score === 'number' ? data.score : p + data.points));
       if (!data.saved) {
         try {
           localStorage.setItem(storageKey(puzzle.id), JSON.stringify(nextFound));
         } catch {}
       }
-      setInput('');
       flash('lift');
 
       const isCleared = nextFound.length >= total;
@@ -326,7 +359,7 @@ export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: Ro
           ? `${word.toUpperCase()}, correct. Board cleared! You found all ${total} words.${tokenNote}`
           : `${label}${word.toUpperCase()}, correct, ${word.length} letters, ${data.points} points. ${nextFound.length} of ${total} found.${tokenNote}`,
       );
-      if (data.tokens_earned && me?.profile) setMe({ ...me, profile: { ...me.profile, tokens: me.profile.tokens + data.tokens_earned } });
+      if (data.tokens_earned) setMe((m) => (m?.profile ? { ...m, profile: { ...m.profile, tokens: m.profile.tokens + data.tokens_earned } } : m));
       return;
     }
 
@@ -337,7 +370,7 @@ export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: Ro
       short: `Words need at least ${minLen} letters.`,
       letters: "Those letters aren't all in the puzzle.",
       closed: 'This puzzle has closed. A new one is up.',
-      slow_down: 'Slow down a little and try again.',
+      slow_down: `Slow down a little. ${word.toUpperCase()} wasn't checked; try it again.`,
     };
     const text = messages[data.status] ?? 'Something went wrong. Try again.';
     if (data.status === 'stale') router.refresh();
@@ -346,7 +379,6 @@ export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: Ro
     flash('shake');
     setFeedback({ kind: data.status === 'repeat' ? 'repeat' : 'wrong', text });
     say(text);
-    setInput('');
   }
 
   // Keyboard shortcuts. Alt (Option on Mac) plus a letter, using key codes so Mac works.
@@ -510,7 +542,11 @@ export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: Ro
                 <button
                   type="button"
                   className={`tile tile-${i % 4} ${used ? 'used' : ''}`}
-                  onClick={() => tapTile(i)}
+                  onMouseDown={holdFocus}
+                  onClick={() => {
+                    tapTile(i);
+                    backToInput();
+                  }}
                   aria-label={`${t}, ${used ? 'used' : 'available'}`}
                   aria-disabled={used}
                 >
@@ -547,6 +583,9 @@ export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: Ro
               if (e.key === 'Escape') {
                 e.preventDefault();
                 clearInput();
+              } else if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                submit();
               }
             }}
             autoComplete="off"
@@ -554,12 +593,12 @@ export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: Ro
             autoCapitalize="off"
             spellCheck={false}
             inputMode="text"
-            enterKeyHint="go"
+            enterKeyHint="send"
             maxLength={puzzle.sourceLength}
             aria-describedby="entry-help"
             className="entry-input"
           />
-          <button type="button" className="btn btn-ghost" onClick={backspace} aria-label="Delete last letter" disabled={!input}>
+          <button type="button" className="btn btn-ghost" onMouseDown={holdFocus} onClick={() => { backspace(); backToInput(); }} aria-label="Delete last letter" disabled={!input}>
             ⌫
           </button>
         </div>
@@ -567,23 +606,27 @@ export default function Game({ puzzle, room }: { puzzle: PublicPuzzle; room?: Ro
           Type letters from the puzzle. Words need at least {minLen} letters. Enter submits, Escape clears. Alt plus R reads how many words are left. Alt plus H uses a hint.
         </p>
         <div className="entry-actions">
-          <button type="button" className="btn" onClick={shuffle}>
+          <button type="button" className="btn" onMouseDown={holdFocus} onClick={() => { shuffle(); backToInput(); }}>
             Shuffle letters
           </button>
-          <button type="button" className="btn" onClick={clearInput} disabled={!input}>
+          <button type="button" className="btn" onMouseDown={holdFocus} onClick={() => { clearInput(); backToInput(); }} disabled={!input}>
             Clear answer
           </button>
           <button
             type="button"
             className="btn btn-hint"
-            onClick={useHint}
+            onMouseDown={holdFocus}
+            onClick={() => {
+              useHint();
+              backToInput();
+            }}
             disabled={cleared}
             aria-disabled={hintLocked || hintBusy || undefined}
             aria-describedby="hint-help"
           >
             {hintWords ? 'Hint showing' : hintWait > 0 ? `Hint in ${hintWait}` : 'Hint'}
           </button>
-          <button type="submit" className="btn btn-primary" disabled={busy || !input}>
+          <button type="submit" className="btn btn-primary" onMouseDown={holdFocus} disabled={!input}>
             Submit word
           </button>
         </div>
